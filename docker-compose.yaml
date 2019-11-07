@@ -1,0 +1,11 @@
+version: "3"
+services:
+  typewriter:
+    build: .
+  seq:
+    image: datalust/seq
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "8080:80"
+      - "5341:5341"

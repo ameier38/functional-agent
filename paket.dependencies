@@ -1,0 +1,17 @@
+source https://www.nuget.org/api/v2
+storage: none
+
+nuget Argu
+nuget FSharp.Control.AsyncSeq
+nuget FSharpx.Collections
+nuget Serilog
+nuget Serilog.Sinks.Seq
+
+// [ FAKE GROUP ]
+group Build
+    source https://nuget.org/api/v2
+    storage: none
+    nuget Fake.DotNet.Cli
+    nuget Fake.IO.FileSystem
+    nuget Fake.Core.Target
+    nuget BlackFox.Fake.BuildTask

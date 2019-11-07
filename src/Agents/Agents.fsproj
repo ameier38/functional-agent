@@ -5,7 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Infrastructure.fs" />
-    <Compile Include="BlockingAgent.fs" />
+    <Compile Include="ParallelAgent.fs" />
     <Compile Include="BufferAgent.fs" />
     <Compile Include="RateAgent.fs" />
   </ItemGroup>

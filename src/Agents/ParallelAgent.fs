@@ -1,46 +1,47 @@
 namespace Agents
 
 open FSharp.Control
+open FSharpx.Collections
 open Serilog
 
-type BlockingAgentRunningState =
+type ParallelAgentRunningState =
     { IsWaiting: bool
       WorkRequestedCount: int
       WorkRunningCount: int
       WorkQueuedCount: int
       WorkCompletedCount: int }
 
-type BlockingAgentStatus =
-    | Running of BlockingAgentRunningState
+type ParallelAgentStatus =
+    | Running of ParallelAgentRunningState
     | Done
 
-type BlockingAgentMessage =
+type ParallelAgentMessage =
     | WorkRequested of Async<unit>
     | WorkCompleted
     | WaitRequested
-    | StatusRequested of AsyncReplyChannel<BlockingAgentStatus>
+    | StatusRequested of AsyncReplyChannel<ParallelAgentStatus>
 
-type BlockingAgentState =
+type ParallelAgentState =
     { IsWaiting: bool
       WorkRequestedCount: int
       WorkRunningCount: int
       WorkCompletedCount: int
-      WorkQueued: Async<unit> list }
+      WorkQueued: Queue<Async<unit>> }
 
-type BlockingAgentMailbox = MailboxProcessor<BlockingAgentMessage>
+type ParallelAgentMailbox = MailboxProcessor<ParallelAgentMessage>
 
-type BlockingAgent(name: string, limit:int) =
+type ParallelAgent(name: string, limit:int) =
     let initialState =
         { IsWaiting = false
           WorkRequestedCount = 0
           WorkRunningCount = 0
           WorkCompletedCount = 0
-          WorkQueued = [] }
+          WorkQueued = Queue.empty<Async<unit>> }
 
-    let tryWork (inbox:BlockingAgentMailbox) (state:BlockingAgentState) =
+    let tryWork (inbox:ParallelAgentMailbox) (state:ParallelAgentState) =
         match state.WorkQueued with
-        | [] -> state
-        | work :: remainingQueue when state.WorkRunningCount < limit ->
+        | Queue.Nil -> state
+        | Queue.Cons (work, remainingQueue) when state.WorkRunningCount < limit ->
             Async.Start(async {
                 do! work
                 inbox.Post(WorkCompleted)
@@ -50,12 +51,12 @@ type BlockingAgent(name: string, limit:int) =
                 WorkQueued = remainingQueue }
         | _ -> state
 
-    let folder (inbox:BlockingAgentMailbox) (state:BlockingAgentState) (msg:BlockingAgentMessage) =
+    let folder (inbox:ParallelAgentMailbox) (state:ParallelAgentState) (msg:ParallelAgentMessage) =
         match msg with
         | WorkRequested work ->
             { state with
                 WorkRequestedCount = state.WorkRequestedCount + 1
-                WorkQueued = work :: state.WorkQueued }
+                WorkQueued = state.WorkQueued.Conj(work) }
         | WaitRequested -> 
             { state with
                 IsWaiting = true }
@@ -72,13 +73,13 @@ type BlockingAgent(name: string, limit:int) =
                     { IsWaiting = state.IsWaiting
                       WorkRequestedCount = state.WorkRequestedCount
                       WorkRunningCount = state.WorkRunningCount
-                      WorkQueuedCount = state.WorkQueued |> List.length
+                      WorkQueuedCount = state.WorkQueued.Length
                       WorkCompletedCount = state.WorkCompletedCount }
                 replyChannel.Reply(Running(status))
             state
         |> tryWork inbox
 
-    let agent = BlockingAgentMailbox.Start(fun inbox ->
+    let agent = ParallelAgentMailbox.Start(fun inbox ->
         AsyncSeq.initInfiniteAsync (fun _ -> inbox.Receive())
         |> AsyncSeq.fold (folder inbox) initialState
         |> Async.Ignore
@@ -89,7 +90,7 @@ type BlockingAgent(name: string, limit:int) =
             match agent.PostAndReply(StatusRequested) with
             | Done -> ()
             | Running status ->
-                Log.Information("[BlockingAgent {Name}] Status: {@Status}", name, status)
+                Log.Information("[ParallelAgent {Name}] Status: {@Status}", name, status)
                 do! Async.Sleep(1000)
                 return! wait()
         }
@@ -99,7 +100,7 @@ type BlockingAgent(name: string, limit:int) =
 
     member __.LogStatus() =
         let status = agent.PostAndReply(StatusRequested)
-        Log.Information("[BlockingAgent {Name}] Status: {@Status}", name, status)
+        Log.Information("[ParallelAgent {Name}] Status: {@Status}", name, status)
 
     member __.Wait() =
         agent.Post(WaitRequested)

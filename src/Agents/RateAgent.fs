@@ -4,11 +4,11 @@ open FSharp.Control
 open FSharpx.Collections
 open Serilog
 
+type RateAgentWork = unit -> unit
+
 type RateAgentRunningState =
     { IsWaiting: bool
       TokenCount: int
-      WorkRequestedCount: int
-      WorkCompletedCount: int
       WorkQueuedCount: int }
 
 type RateAgentStatus =
@@ -16,8 +16,7 @@ type RateAgentStatus =
     | Done
 
 type RateAgentMessage =
-    | WorkRequested of Async<unit>
-    | WorkCompleted
+    | WorkRequested of RateAgentWork
     | RefillRequested
     | WaitRequested
     | StatusRequested of AsyncReplyChannel<RateAgentStatus>
@@ -25,9 +24,7 @@ type RateAgentMessage =
 type RateAgentState =
     { IsWaiting: bool
       TokenCount: int
-      WorkRequestedCount: int
-      WorkCompletedCount: int
-      WorkQueued: Queue<Async<unit>> }
+      WorkQueued: Queue<RateAgentWork> }
 
 type RateAgentMailbox = MailboxProcessor<RateAgentMessage>
 
@@ -36,36 +33,28 @@ type RateAgent(name:string, rateLimit:PerSecond) =
     let initialState =
         { IsWaiting = false
           TokenCount = 1<second> * rateLimit
-          WorkRequestedCount = 0
-          WorkCompletedCount = 0
-          WorkQueued = Queue.empty<Async<unit>> }
+          WorkQueued = Queue.empty<RateAgentWork> }
 
-    let tryWork (inbox:RateAgentMailbox) (state:RateAgentState) =
+    let tryWork (state:RateAgentState) =
         let rec recurse (s:RateAgentState) =
             match s.WorkQueued, s.TokenCount with
             | Queue.Nil, _ -> s
             | _, 0 -> s
             | Queue.Cons (work, remainingQueue), tokenCount ->
-                Async.Start(async {
-                    do! work
-                    inbox.Post(WorkCompleted)
-                })
+                work ()
                 let newState =
                     { s with
                         TokenCount = tokenCount - 1
                         WorkQueued = remainingQueue }
                 recurse newState
-        recurse state
+        if state.TokenCount > 0 then recurse state
+        else state
 
     let folder (inbox:RateAgentMailbox) (state:RateAgentState) (msg:RateAgentMessage) =
         match msg with
         | WorkRequested work -> 
             { state with
-                WorkRequestedCount = state.WorkRequestedCount + 1
                 WorkQueued = state.WorkQueued.Conj(work) }
-        | WorkCompleted -> 
-            { state with
-                WorkCompletedCount = state.WorkCompletedCount + 1 }
         | RefillRequested -> 
             { state with
                 TokenCount = 1<second> * rateLimit }
@@ -73,19 +62,16 @@ type RateAgent(name:string, rateLimit:PerSecond) =
             { state with
                 IsWaiting = true }
         | StatusRequested replyChannel ->
-            let isComplete = state.WorkRequestedCount = state.WorkCompletedCount
-            if state.IsWaiting && isComplete then 
+            if state.IsWaiting && state.WorkQueued.IsEmpty then 
                 replyChannel.Reply(Done)
             else
                 let status =
                     { IsWaiting = state.IsWaiting
                       TokenCount = state.TokenCount
-                      WorkRequestedCount = state.WorkRequestedCount
-                      WorkCompletedCount = state.WorkCompletedCount
                       WorkQueuedCount = state.WorkQueued.Length }
                 replyChannel.Reply(Running(status))
             state
-        |> tryWork inbox
+        |> tryWork
 
     let agent = RateAgentMailbox.Start(fun inbox ->
         AsyncSeq.initInfiniteAsync (fun _ -> inbox.Receive())
@@ -116,7 +102,7 @@ type RateAgent(name:string, rateLimit:PerSecond) =
         let status = agent.PostAndReply(StatusRequested)
         Log.Information("[RateAgent {Name}] Status: {@Status}", name, status)
 
-    member __.Post(work:Async<unit>) =
+    member __.Post(work:RateAgentWork) =
         agent.Post(WorkRequested(work))
 
     member __.Wait() =

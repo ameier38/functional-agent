@@ -8,7 +8,7 @@ open Typewriter
 
 type Arguments =
     | [<AltCommandLine("-r")>] Rate_Limit of int
-    | [<AltCommandLine("-c")>] Concurrent_Limit of int
+    | [<AltCommandLine("-p")>] Parallel_Limit of int
     | [<AltCommandLine("-b")>] Buffer_Size of int
     | [<AltCommandLine("-f")>] File_Path of string
 with
@@ -16,11 +16,11 @@ with
         member s.Usage =
             match s with
             | Rate_Limit _ -> "specify the limit on the number of keys pressed per second"
-            | Concurrent_Limit _ -> "specify the number of keys to process concurrently"
+            | Parallel_Limit _ -> "specify the number of keys to process in parallel"
             | Buffer_Size _ -> "specify the number of keys to process before writing to console"
             | File_Path _ -> "specify the path of the file in which to write buffer"
 
-type Typewriter(rateLimit:int<1/second>, concurrentLimit:int, bufferSize:int, filePath:string) =
+type Typewriter(rateLimit:int<1/second>, parallelLimit:int, bufferSize:int, filePath:string) =
     let processBuffer (buffer:char list) =
         async {
             do! Async.Sleep(5000)
@@ -33,29 +33,29 @@ type Typewriter(rateLimit:int<1/second>, concurrentLimit:int, bufferSize:int, fi
         }
     
     let rateAgent = RateAgent("Type", rateLimit)
-    let blockingAgent = BlockingAgent("Type", concurrentLimit)
+    let parallelAgent = ParallelAgent("Type", parallelLimit)
     let bufferAgent = BufferAgent("Print", bufferSize, processBuffer)
 
     member __.Write(keyInfo:ConsoleKeyInfo) =
         match keyInfo.Key, keyInfo.Modifiers with
         | ConsoleKey.Enter, ConsoleModifiers.Control ->
             rateAgent.Wait()
-            blockingAgent.Wait()
+            parallelAgent.Wait()
             bufferAgent.Wait()
             exit 0
         | ConsoleKey.Enter, _ ->
             rateAgent.LogStatus()
-            blockingAgent.LogStatus()
+            parallelAgent.LogStatus()
             bufferAgent.LogStatus()
         | _ ->
             let work = async {
                 do! Async.Sleep(1000)
                 bufferAgent.Post(keyInfo.KeyChar)
             }
-            rateAgent.Post(async {
+            rateAgent.Post(fun () ->
                 Console.Write(keyInfo.KeyChar)
-                blockingAgent.Post(work)
-            })
+                parallelAgent.Post(work)
+            )
 
 let readKeys () =
     printfn """
@@ -79,9 +79,9 @@ let main argv =
     let args = parser.ParseCommandLine(argv)
     let rateLimit = args.GetResult Rate_Limit
     let rateLimitPerSecond = rateLimit * 1</second>
-    let concurrentLimit = args.GetResult Concurrent_Limit
+    let parallelLimit = args.GetResult Parallel_Limit
     let bufferSize = args.GetResult Buffer_Size
     let filePath = args.GetResult File_Path
-    let typewriter = Typewriter(rateLimitPerSecond, concurrentLimit, bufferSize, filePath)
+    let typewriter = Typewriter(rateLimitPerSecond, parallelLimit, bufferSize, filePath)
     readKeys() |> Seq.iter typewriter.Write
     0

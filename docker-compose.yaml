@@ -1,11 +1,7 @@
-version: "3"
+version: "3.7"
 services:
   typewriter:
     build: .
-  seq:
-    image: datalust/seq
-    environment:
-      ACCEPT_EULA: "Y"
-    ports:
-      - "8080:80"
-      - "5341:5341"
+    volumes:
+      - .:/workspace
+    command: ['-r', '2', '-p', '2', '-b', '10', '-f', '/workspace/test.txt']

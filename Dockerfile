@@ -19,6 +19,6 @@ FROM mcr.microsoft.com/dotnet/core/runtime:3.0-alpine as runner
 
 WORKDIR /app
 
-COPY --from=builder /app/src/Printer/out .
+COPY --from=builder /app/src/Typewriter/out .
 
-ENTRYPOINT [ "dotnet", "Printer.dll" ]
+ENTRYPOINT [ "dotnet", "Typewriter.dll" ]

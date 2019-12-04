@@ -6,7 +6,7 @@ open Fake.IO.FileSystemOperators
 open BlackFox.Fake
 
 let solution = "FunctionalAgent.sln"
-let printer = "src" </> "Printer" </> "Printer.fsproj"
+let typewriterProject = "src" </> "Typewriter" </> "Typewriter.fsproj"
 
 let clean = BuildTask.create "Clean" [] {
     !! "src/**/bin"
@@ -27,9 +27,9 @@ BuildTask.create "Publish" [clean] {
     DotNet.publish 
         (fun opts -> 
             { opts with 
-                OutputPath = Some ("src" </> "Printer" </> "out")
+                OutputPath = Some ("src" </> "Typewriter" </> "out")
                 Configuration = DotNet.BuildConfiguration.Release })
-        printer
+        typewriterProject
 }
 
 let _default = BuildTask.createEmpty "Default" []

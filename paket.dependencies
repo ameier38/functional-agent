@@ -5,7 +5,7 @@ nuget Argu
 nuget FSharp.Control.AsyncSeq
 nuget FSharpx.Collections
 nuget Serilog
-nuget Serilog.Sinks.Seq
+nuget Serilog.Sinks.Console
 
 // [ FAKE GROUP ]
 group Build

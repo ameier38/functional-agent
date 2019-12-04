@@ -59,9 +59,6 @@ type ParallelAgent(name: string, limit:int) =
                 { state with
                     WorkRequestedCount = state.WorkRequestedCount + 1
                     WorkQueued = state.WorkQueued.Conj(work) }
-            | WaitRequested -> 
-                { state with
-                    IsWaiting = true }
             | WorkCompleted ->
                 { state with
                     WorkRunningCount = state.WorkRunningCount - 1
@@ -79,6 +76,9 @@ type ParallelAgent(name: string, limit:int) =
                           WorkCompletedCount = state.WorkCompletedCount }
                     replyChannel.Reply(Running(status))
                 state
+            | WaitRequested -> 
+                { state with
+                    IsWaiting = true }
             |> tryWork inbox
 
     let agent = ParallelAgentMailbox.Start(fun inbox ->

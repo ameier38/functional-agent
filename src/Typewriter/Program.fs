@@ -39,6 +39,7 @@ type Typewriter(rateLimit:int<1/second>, parallelLimit:int, bufferSize:int, file
     member __.Write(keyInfo:ConsoleKeyInfo) =
         match keyInfo.Key, keyInfo.Modifiers with
         | ConsoleKey.Enter, ConsoleModifiers.Control ->
+            printfn "received wait"
             rateAgent.Wait()
             parallelAgent.Wait()
             bufferAgent.Wait()
@@ -71,9 +72,8 @@ Press <Ctrl-C> to force exit.
 
 [<EntryPoint>]
 let main argv =
-    let config = Config.Load()
     Log.Logger <- LoggerConfiguration()
-        .WriteTo.Seq(config.SeqConfig.Url)
+        .WriteTo.Console()
         .CreateLogger()
     let parser = ArgumentParser.Create<Arguments>()
     let args = parser.ParseCommandLine(argv)

@@ -1,4 +1,4 @@
 Argu
 FSharp.Control.AsyncSeq
 Serilog
-Serilog.Sinks.Seq
+Serilog.Sinks.Console

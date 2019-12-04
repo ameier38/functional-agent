@@ -51,37 +51,39 @@ type ParallelAgent(name: string, limit:int) =
                 WorkQueued = remainingQueue }
         | _ -> state
 
-    let folder (inbox:ParallelAgentMailbox) (state:ParallelAgentState) (msg:ParallelAgentMessage) =
-        match msg with
-        | WorkRequested work ->
-            { state with
-                WorkRequestedCount = state.WorkRequestedCount + 1
-                WorkQueued = state.WorkQueued.Conj(work) }
-        | WaitRequested -> 
-            { state with
-                IsWaiting = true }
-        | WorkCompleted ->
-            { state with
-                WorkRunningCount = state.WorkRunningCount - 1
-                WorkCompletedCount = state.WorkCompletedCount + 1 }
-        | StatusRequested replyChannel ->
-            let isComplete = state.WorkRequestedCount = state.WorkCompletedCount
-            if state.IsWaiting && isComplete then 
-                replyChannel.Reply(Done)
-            else
-                let status =
-                    { IsWaiting = state.IsWaiting
-                      WorkRequestedCount = state.WorkRequestedCount
-                      WorkRunningCount = state.WorkRunningCount
-                      WorkQueuedCount = state.WorkQueued.Length
-                      WorkCompletedCount = state.WorkCompletedCount }
-                replyChannel.Reply(Running(status))
-            state
-        |> tryWork inbox
+    let evolve (inbox:ParallelAgentMailbox) 
+        : ParallelAgentState -> ParallelAgentMessage -> ParallelAgentState =
+        fun (state:ParallelAgentState) (msg:ParallelAgentMessage) ->
+            match msg with
+            | WorkRequested work ->
+                { state with
+                    WorkRequestedCount = state.WorkRequestedCount + 1
+                    WorkQueued = state.WorkQueued.Conj(work) }
+            | WaitRequested -> 
+                { state with
+                    IsWaiting = true }
+            | WorkCompleted ->
+                { state with
+                    WorkRunningCount = state.WorkRunningCount - 1
+                    WorkCompletedCount = state.WorkCompletedCount + 1 }
+            | StatusRequested replyChannel ->
+                let isComplete = state.WorkRequestedCount = state.WorkCompletedCount
+                if state.IsWaiting && isComplete then 
+                    replyChannel.Reply(Done)
+                else
+                    let status =
+                        { IsWaiting = state.IsWaiting
+                          WorkRequestedCount = state.WorkRequestedCount
+                          WorkRunningCount = state.WorkRunningCount
+                          WorkQueuedCount = state.WorkQueued.Length
+                          WorkCompletedCount = state.WorkCompletedCount }
+                    replyChannel.Reply(Running(status))
+                state
+            |> tryWork inbox
 
     let agent = ParallelAgentMailbox.Start(fun inbox ->
         AsyncSeq.initInfiniteAsync (fun _ -> inbox.Receive())
-        |> AsyncSeq.fold (folder inbox) initialState
+        |> AsyncSeq.fold (evolve inbox) initialState
         |> Async.Ignore
     )
 

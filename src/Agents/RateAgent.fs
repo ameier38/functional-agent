@@ -50,32 +50,34 @@ type RateAgent(name:string, rateLimit:PerSecond) =
         if state.TokenCount > 0 then recurse state
         else state
 
-    let folder (inbox:RateAgentMailbox) (state:RateAgentState) (msg:RateAgentMessage) =
-        match msg with
-        | WorkRequested work -> 
-            { state with
-                WorkQueued = state.WorkQueued.Conj(work) }
-        | RefillRequested -> 
-            { state with
-                TokenCount = 1<second> * rateLimit }
-        | WaitRequested -> 
-            { state with
-                IsWaiting = true }
-        | StatusRequested replyChannel ->
-            if state.IsWaiting && state.WorkQueued.IsEmpty then 
-                replyChannel.Reply(Done)
-            else
-                let status =
-                    { IsWaiting = state.IsWaiting
-                      TokenCount = state.TokenCount
-                      WorkQueuedCount = state.WorkQueued.Length }
-                replyChannel.Reply(Running(status))
-            state
-        |> tryWork
+    let evolve
+        : RateAgentState -> RateAgentMessage -> RateAgentState = 
+        fun (state:RateAgentState) (msg:RateAgentMessage) ->
+            match msg with
+            | WorkRequested work -> 
+                { state with
+                    WorkQueued = state.WorkQueued.Conj(work) }
+            | RefillRequested -> 
+                { state with
+                    TokenCount = 1<second> * rateLimit }
+            | WaitRequested -> 
+                { state with
+                    IsWaiting = true }
+            | StatusRequested replyChannel ->
+                if state.IsWaiting && state.WorkQueued.IsEmpty then 
+                    replyChannel.Reply(Done)
+                else
+                    let status =
+                        { IsWaiting = state.IsWaiting
+                          TokenCount = state.TokenCount
+                          WorkQueuedCount = state.WorkQueued.Length }
+                    replyChannel.Reply(Running(status))
+                state
+            |> tryWork
 
     let agent = RateAgentMailbox.Start(fun inbox ->
         AsyncSeq.initInfiniteAsync (fun _ -> inbox.Receive())
-        |> AsyncSeq.fold (folder inbox) initialState
+        |> AsyncSeq.fold evolve initialState
         |> Async.Ignore
     )
 

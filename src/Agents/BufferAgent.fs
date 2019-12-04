@@ -47,34 +47,36 @@ type BufferAgent<'I>(name:string, bufferSize:int,processBuffer:'I list -> Async<
                 ProcessBufferRequestedCount = state.ProcessBufferRequestedCount + 1 }
         | _ -> state
     
-    let folder (inbox:BufferAgentMailbox<'I>) (state:BufferAgentState<'I>) (msg:BufferAgentMessage<'I>) =
-        match msg with
-        | ItemReceived item -> 
-            { state with
-                Buffer = item :: state.Buffer }
-        | WaitRequested -> 
-            { state with
-                IsWaiting = true }
-        | ProcessBufferCompleted -> 
-            { state with
-                ProcessBufferCompletedCount = state.ProcessBufferCompletedCount + 1 }
-        | StatusRequested replyChannel ->
-            let isComplete = state.ProcessBufferRequestedCount = state.ProcessBufferCompletedCount
-            if state.IsWaiting && isComplete then
-                replyChannel.Reply(Done)
-            else
-                let status =
-                    { IsWaiting = state.IsWaiting
-                      BufferSize = state.Buffer |> List.length
-                      ProcessBufferRequestedCount = state.ProcessBufferRequestedCount
-                      ProcessBufferCompletedCount = state.ProcessBufferCompletedCount }
-                replyChannel.Reply(Running(status))
-            state
-        |> tryProcessBuffer inbox
+    let evolve (inbox:BufferAgentMailbox<'I>)
+        : BufferAgentState<'I> -> BufferAgentMessage<'I> -> BufferAgentState<'I> =
+        fun (state:BufferAgentState<'I>) (msg:BufferAgentMessage<'I>) ->
+            match msg with
+            | ItemReceived item -> 
+                { state with
+                    Buffer = item :: state.Buffer }
+            | WaitRequested -> 
+                { state with
+                    IsWaiting = true }
+            | ProcessBufferCompleted -> 
+                { state with
+                    ProcessBufferCompletedCount = state.ProcessBufferCompletedCount + 1 }
+            | StatusRequested replyChannel ->
+                let isComplete = state.ProcessBufferRequestedCount = state.ProcessBufferCompletedCount
+                if state.IsWaiting && isComplete then
+                    replyChannel.Reply(Done)
+                else
+                    let status =
+                        { IsWaiting = state.IsWaiting
+                          BufferSize = state.Buffer |> List.length
+                          ProcessBufferRequestedCount = state.ProcessBufferRequestedCount
+                          ProcessBufferCompletedCount = state.ProcessBufferCompletedCount }
+                    replyChannel.Reply(Running(status))
+                state
+            |> tryProcessBuffer inbox
 
     let agent = BufferAgentMailbox.Start(fun inbox ->
         AsyncSeq.initInfiniteAsync(fun _ -> inbox.Receive())
-        |> AsyncSeq.fold (folder inbox) initialState
+        |> AsyncSeq.fold (evolve inbox) initialState
         |> Async.Ignore
     )
 
